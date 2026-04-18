@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif;font-size:12px}
+body{display:flex;height:100vh;overflow:hidden;background:#e8e8e8}
+#sidebar{width:200px;min-width:200px;background:#fff;border-right:2px solid #ccc;display:flex;flex-direction:column;overflow:hidden}
+#sidebar-header{background:#1a3a5c;color:#fff;padding:8px;font-weight:bold;font-size:11px;text-align:center}
+#worker-list{flex:1;overflow-y:auto;padding:4px}
+.worker-item{padding:4px 6px;margin:2px 0;border-radius:3px;cursor:grab;font-size:10px;font-weight:bold;border:1px solid rgba(0,0,0,0.2);user-select:none;line-height:1.3}
+.worker-item:active{cursor:grabbing}
+.worker-item.dragging{opacity:0.4}
+.worker-item.assigned{opacity:0.35;text-decoration:line-through;cursor:not-allowed}
+.legend{display:flex;flex-wrap:wrap;gap:3px;padding:5px;border-top:1px solid #eee}
+.legend-item{display:flex;align-items:center;gap:3px;font-size:9px}
+.legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0}
+#rightpanel{width:150px;min-width:150px;background:#fff;border-left:2px solid #ccc;display:flex;flex-direction:column;padding:8px;gap:8px;overflow-y:auto}
+#rightpanel .panel-title{background:#1a3a5c;color:#fff;padding:6px;font-weight:bold;font-size:11px;text-align:center;border-radius:4px}
+.panel-btn{width:100%;padding:8px 4px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;font-size:11px;color:#fff;margin-bottom:4px}
+.btn-add{background:#27ae60}.btn-del{background:#e74c3c}.btn-dl{background:#2980b9}.btn-save{background:#8e44ad}
+.panel-btn:hover{opacity:0.85}
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#toolbar{background:#1a3a5c;color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative}
+#toolbar .title{font-weight:bold;font-size:12px;flex:1}
+#date-display{background:#e8660a;color:#fff;padding:4px 10px;border-radius:4px;font-weight:bold;font-size:11px;cursor:pointer;white-space:nowrap}
+#calendar-popup{display:none;position:absolute;top:38px;right:0;background:#fff;border:1px solid #bbb;border-radius:8px;padding:12px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.25);width:240px}
+#calendar-popup.show{display:block}
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.cal-header span{font-weight:bold;font-size:13px;color:#1a3a5c}
+.cal-header button{background:#1a3a5c;color:#fff;border:none;cursor:pointer;font-size:15px;padding:2px 8px;border-radius:4px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.cal-day-name{font-size:10px;color:#888;font-weight:bold;padding:3px 0}
+.cal-day{padding:5px 2px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500}
+.cal-day:hover{background:#e8660a;color:#fff}
+.cal-day.today{background:#e74c3c;color:#fff;font-weight:bold}
+.cal-day.selected{background:#27ae60;color:#fff;font-weight:bold}
+.cal-day.empty{cursor:default;background:none}
+#sheet-area{flex:1;overflow:auto;padding:8px}
+#sheet-wrap{background:#fff;border:1px solid #bbb;border-radius:4px;overflow:hidden}
+
+/* HEADER DEL EXCEL */
+.xl-header{text-align:center;padding:8px 4px 4px;background:#1a3a5c;color:#fff;font-weight:bold;font-size:15px;letter-spacing:0.5px}
+.xl-sub1{text-align:center;padding:3px 4px;background:#e8660a;color:#fff;font-weight:bold;font-size:12px}
+.xl-sub2{text-align:center;padding:3px 4px;background:#e8660a;color:#fff;font-weight:bold;font-size:12px}
+.xl-enc{text-align:center;padding:4px;background:#fff;font-weight:bold;font-size:11px;color:#1a3a5c;border-bottom:2px solid #1a3a5c}
+
+/* TABLA */
+#sheet{border-collapse:collapse;width:100%;table-layout:fixed}
+#sheet th,#sheet td{border:1px solid #c8c8c8;padding:3px 6px;vertical-align:middle;overflow:hidden;height:24px}
+#sheet th:nth-child(1),#sheet td:nth-child(1){width:32px;text-align:center;font-weight:bold}
+#sheet th:nth-child(2),#sheet td:nth-child(2){width:42%}
+#sheet th:nth-child(3),#sheet td:nth-child(3){width:auto}
+.col-header th{background:#1a3a5c;color:#fff;font-size:11px;font-weight:bold;text-align:center;height:26px}
+.sec-row td{background:#e8660a!important;color:#fff!important;font-weight:bold;font-size:11px;height:24px}
+.data-row-odd td{background:#fff}
+.data-row-even td{background:#f5f0eb}
+.drop-cell{cursor:pointer}
+.drop-cell.drag-over{background:#d5f5e3!important;outline:2px dashed #27ae60}
+.drop-cell.drag-over-swap{background:#fde8c8!important;outline:2px dashed #e8660a}
+.assigned-worker{display:inline-flex;align-items:center;gap:3px;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:bold;margin:1px;height:20px;cursor:grab;user-select:none}
+.assigned-worker:active{cursor:grabbing}
+.assigned-worker.dragging-from-cell{opacity:0.4}
+.assigned-worker .remove-btn{background:none;border:none;cursor:pointer;color:rgba(0,0,0,0.4);font-size:12px;line-height:1;padding:0 1px}
+.assigned-worker .remove-btn:hover{color:#e74c3c}
+.fixed-worker{font-size:10px;color:#555;font-style:italic}
+.num-cell{font-size:11px;font-weight:bold;color:#1a3a5c}
+#save-msg{position:fixed;bottom:20px;right:170px;background:#8e44ad;color:#fff;padding:8px 14px;border-radius:6px;display:none;font-weight:bold;z-index:9999;font-size:12px}
+#modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9998;align-items:center;justify-content:center}
+#modal-overlay.show{display:flex}
+#modal-box{background:#fff;border-radius:8px;padding:18px;width:300px;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+#modal-box h3{margin-bottom:12px;font-size:14px;color:#1a3a5c}
+#modal-box input,#modal-box select{width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;margin-bottom:10px;font-size:12px}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end}
+.modal-btns button{padding:6px 14px;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:12px}
+.btn-confirm{background:#27ae60;color:#fff}.btn-cancel{background:#ccc;color:#333}
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <div id="sidebar-header">PERSONAL DISPONIBLE</div>
+  <div id="worker-list"></div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<div id="main">
+  <div id="toolbar">
+    <span class="title">PLANILLA — LLANES</span>
+    <div id="date-display" onclick="toggleCalendar()">📅 <span id="date-label">Seleccionar fecha</span></div>
+    <div id="calendar-popup">
+      <div class="cal-header">
+        <button onclick="changeMonth(-1)">&#8249;</button>
+        <span id="cal-title"></span>
+        <button onclick="changeMonth(1)">&#8250;</button>
+      </div>
+      <div class="cal-grid" id="cal-day-names"></div>
+      <div class="cal-grid" id="cal-days"></div>
+    </div>
+  </div>
+  <div id="sheet-area">
+    <div id="sheet-wrap">
+      <div class="xl-header">LISTADO DE PERSONAL LLANES</div>
+      <div class="xl-sub1">SERVICIO LIMPIEZA VIARIA DIURNO LLANES</div>
+      <div class="xl-sub2" id="xl-fecha">FECHA</div>
+      <div class="xl-enc">ENCARGADO: RAFAEL GARCIA GIRALDO</div>
+      <table id="sheet" cellspacing="0"></table>
+    </div>
+  </div>
+</div>
+
+<div id="rightpanel">
+  <div class="panel-title">ACCIONES</div>
+  <button class="panel-btn btn-add" onclick="openAddModal()">➕ Agregar personal</button>
+  <button class="panel-btn btn-del" onclick="openDelModal()">🗑️ Eliminar personal</button>
+  <hr style="border:none;border-top:1px solid #eee">
+  <button class="panel-btn btn-save" onclick="saveData()">💾 GUARDAR</button>
+  <button class="panel-btn btn-dl" onclick="downloadExcel()">⬇️ DESCARGAR Excel</button>
+</div>
+
+<div id="save-msg">✅ Guardado</div>
+<div id="modal-overlay">
+  <div id="modal-box">
+    <h3 id="modal-title"></h3>
+    <div id="modal-content"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-confirm" onclick="modalConfirm()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const CAT_COLORS={
+  amarillo:{bg:'#FFF176',border:'#F9A825',text:'#7c5c00'},
+  naranja:{bg:'#FFCC80',border:'#EF6C00',text:'#7c3300'},
+  verde:{bg:'#A5D6A7',border:'#2E7D32',text:'#1b4f1e'},
+  azul:{bg:'#90CAF9',border:'#1565C0',text:'#0d3b6e'},
+  marron:{bg:'#BCAAA4',border:'#4E342E',text:'#2c1a14'}
+};
+const CAT_LABELS={amarillo:'Peones',naranja:'Conductores',verde:'Zona Verde',azul:'General',marron:'Brigada Rural'};
+
+let WORKERS=[
+  {name:'BENITO NORIEGA ROMANO',cat:'amarillo'},
+  {name:'CIPRIAN BAESU',cat:'amarillo'},
+  {name:'EMILIO MARCOS SANCHEZ',cat:'amarillo'},
+  {name:'BAMBA NDIAYE',cat:'amarillo'},
+  {name:'VICTORIANO ANCA ROMANAO',cat:'amarillo'},
+  {name:'JAVIER MENENDEZ GOMEZ',cat:'amarillo'},
+  {name:'LUIS FCO. ALONSO ÁLVAREZ',cat:'amarillo'},
+  {name:'JUAN PRIETO BODELON',cat:'naranja'},
+  {name:'JAVIER TUERO JUNCO',cat:'naranja'},
+  {name:'RUBEN RODRIGUEZ GION',cat:'verde'},
+  {name:'RUBEN DARIO GONZALO VIÑAS',cat:'verde'},
+  {name:'ANGEL DEL HOYO',cat:'marron'},
+  {name:'ANGEL AMIEVA PEREZ',cat:'marron'},
+  {name:'ARTURO GUTIERREZ GUTIERREZ',cat:'marron'},
+  {name:'MARCOS PEREIRA DOS NACIMIENTO',cat:'marron'},
+  {name:'DANIEL LOPEZ CALVO',cat:'azul'},
+  {name:'LUIS ALFREDO GUITIAN EXPÓSITO',cat:'azul'},
+  {name:'GERARDO TUERO JUNCO',cat:'azul'},
+  {name:'JESUS PRIETO OLIVA',cat:'azul'},
+  {name:'JAGOBA MENTXAKA FERNANDEZ',cat:'azul'},
+  {name:'LUCIANO SAMPERIO CASO',cat:'azul'},
+  {name:'JUAN LUIS MARTINEZ BLANCO',cat:'azul'}
+];
+
+// fixed:true = no drag, shown as static text
+const SECTIONS=[
+  {id:'contenedores',title:'COLOCACIÓN Y RECOGIDA DE CONTENEDORES',horario:'DE: 18-20H / 00:00-02:00',puestos:['PEÓN - CONDUCTOR','PEÓN','PEÓN']},
+  {id:'llanes',title:'BARRIDO MANUAL EN LLANES',horario:'HORARIO DE 06:00 A 13:16',puestos:['CARRITO','CARRITO','CARRITO','CARRITO','INVICTA','CARRITO - REPASO','']},
+  {id:'posada',title:'BARRIDO MANUAL EN POSADA',horario:'HORARIO DE 06:00 A 13:16',puestos:['CARRITO']},
+  {id:'nueva',title:'BARRIDO MANUAL EN NUEVA',horario:'HORARIO DE 06:00 A 13:16',puestos:['CARRITO']},
+  {id:'motorizado',title:'BARRIDO MANUAL MOTORIZADO EN PUEBLOS',horario:'HORARIO DE 07:00 A 14:16',puestos:['BAUL','']},
+  {id:'baldeo',title:'BALDEO TANGENCIAL',horario:'HORARIO DE 06:00 A 13:16',puestos:['CUBA IVECO']},
+  {id:'mecanico',title:'BARRIDO MECÁNICO CITY / JEFE DE EQUIPO',horario:'HORARIO DE 06:00 A 13:16',puestos:['CONDUCTOR']},
+  {id:'fachadas',title:'LIMPIAFACHADAS',horario:'HORARIO DE 06:00 A 13:16',puestos:['']},
+  {id:'mathieu',title:'BALDEO ALTA PRESIÓN (MATHIEU)',horario:'HORARIO DE 06:00 A 13:16',puestos:['']},
+  {id:'rural',title:'BRIGADA RURAL',horario:'HORARIO DE 07:00 A 14:16',puestos:['KANGO + REMOLQUE','','','','','','','','']},
+  {id:'fregadora',title:'FREGADORA DECAPADORA CMAR',horario:'',puestos:['']},
+  {id:'playas',title:'LIMPIEZA DE PLAYAS',horario:'',puestos:['','','','','']},
+  {id:'vacaciones',title:'VACACIONES',horario:'FECHA:',puestos:['','','','','']},
+  {id:'baja',title:'BAJA ENFERMEDAD',horario:'',puestos:['LUIS ANTONIO VIÑAS ARDUENGO'],fixed:[true]},
+  {id:'descansos',title:'DESCANSOS',horario:'',puestos:['','','','','','','','','','','','','','']},
+  {id:'faltas',title:'FALTAS',horario:'',puestos:['','','','']}
+];
+
+let assignments={};
+let selectedDate=null;
+let calYear,calMonth;
+let modalMode='';
+let dragState=null;
+
+function init(){
+  const now=new Date();calYear=now.getFullYear();calMonth=now.getMonth();
+  loadData();renderWorkers();renderLegend();renderSheet();renderCalendar();
+  document.addEventListener('click',e=>{
+    const cal=document.getElementById('calendar-popup');
+    const btn=document.getElementById('date-display');
+    if(!cal.contains(e.target)&&!btn.contains(e.target)) cal.classList.remove('show');
+  });
+}
+
+function workerStyle(name){
+  const w=WORKERS.find(x=>x.name===name);
+  const c=CAT_COLORS[w?w.cat:'azul'];
+  return `background:${c.bg};border:1px solid ${c.border};color:${c.text}`;
+}
+
+function renderWorkers(){
+  const list=document.getElementById('worker-list');list.innerHTML='';
+  WORKERS.forEach(w=>{
+    const c=CAT_COLORS[w.cat];
+    const div=document.createElement('div');
+    div.className='worker-item';
+    div.style.cssText=`background:${c.bg};border-color:${c.border};color:${c.text}`;
+    div.textContent=w.name;div.draggable=true;div.dataset.name=w.name;
+    div.id='w_'+w.name.replace(/\W/g,'_');
+    div.addEventListener('dragstart',e=>{dragState={name:w.name,fromCell:null};div.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+    div.addEventListener('dragend',()=>div.classList.remove('dragging'));
+    list.appendChild(div);
+  });
+  updateWorkerStates();
+}
+
+function renderLegend(){
+  const leg=document.getElementById('legend');
+  leg.innerHTML=Object.entries(CAT_COLORS).map(([k,c])=>
+    `<div class="legend-item"><span class="legend-dot" style="background:${c.bg};border:1px solid ${c.border}"></span><span style="color:#555;font-size:9px">${CAT_LABELS[k]}</span></div>`
+  ).join('');
+}
+
+let rowParity=0;
+function renderSheet(){
+  const tbl=document.getElementById('sheet');tbl.innerHTML='';rowParity=0;
+  // Column headers
+  const thead=tbl.createTHead();
+  const hr=thead.insertRow();hr.className='col-header';
+  [['#','32px'],['PUESTO / VEHÍCULO','42%'],['TRABAJADOR ASIGNADO','auto']].forEach(([t,w])=>{
+    const th=document.createElement('th');th.textContent=t;th.style.width=w;hr.appendChild(th);
+  });
+  const tbody=tbl.createTBody();
+  SECTIONS.forEach(sec=>{
+    // Section header row
+    const sr=tbody.insertRow();sr.className='sec-row';
+    const sc=sr.insertCell();sc.colSpan=3;
+    sc.innerHTML=`<strong>${sec.title}</strong>${sec.horario?` <span style="float:right;font-weight:normal;font-size:10px">${sec.horario}</span>`:''}`;
+    // Data rows
+    sec.puestos.forEach((puesto,i)=>{
+      const isFixed=sec.fixed&&sec.fixed[i];
+      const r=tbody.insertRow();
+      r.className=rowParity%2===0?'data-row-odd':'data-row-even';rowParity++;
+      // # cell
+      const cn=r.insertCell();cn.className='num-cell';cn.dataset.numcell='1';
+      // Puesto cell
+      const cp=r.insertCell();cp.style.paddingLeft='16px';cp.style.fontSize='10px';cp.style.color='#333';cp.textContent=puesto;
+      // Worker cell
+      const cw=r.insertCell();
+      if(isFixed){
+        cw.className='fixed-worker';cw.textContent=puesto==='JAGOBA MENTXAKA FERNANDEZ'?'JAGOBA MENTXAKA FERNANDEZ':'(Fija)';
+        cp.textContent='';cn.textContent='';
+      } else {
+        const cellId=sec.id+'_'+i;
+        cw.className='drop-cell';cw.dataset.cellId=cellId;
+        cw.addEventListener('dragover',onDragOver);
+        cw.addEventListener('dragleave',onDragLeave);
+        cw.addEventListener('drop',onDrop);
+        renderCell(cw,cellId);
+        updateNumCell(cn,cellId);
+      }
+    });
+  });
+}
+
+function updateNumCell(cell,cellId){
+  cell.textContent=(assignments[cellId]||[]).length>0?'1':'';
+}
+
+function renderCell(cell,cellId){
+  cell.innerHTML='';
+  (assignments[cellId]||[]).forEach(name=>{
+    const span=document.createElement('span');
+    span.className='assigned-worker';span.style.cssText=workerStyle(name);
+    span.draggable=true;span.dataset.name=name;span.dataset.fromCell=cellId;
+    const safe=name.replace(/'/g,"\\'");
+    span.innerHTML=`${name}<button class="remove-btn" onclick="event.stopPropagation();removeWorker('${cellId}','${safe}')">✕</button>`;
+    span.addEventListener('dragstart',e=>{dragState={name,fromCell:cellId};span.classList.add('dragging-from-cell');e.dataTransfer.effectAllowed='move';e.stopPropagation();});
+    span.addEventListener('dragend',()=>span.classList.remove('dragging-from-cell'));
+    cell.appendChild(span);
+  });
+  const numCell=cell.closest('tr')?.querySelector('[data-numcell]');
+  if(numCell) updateNumCell(numCell,cellId);
+}
+
+function removeWorker(cellId,name){
+  if(!assignments[cellId]) return;
+  assignments[cellId]=assignments[cellId].filter(n=>n!==name);
+  if(!assignments[cellId].length) delete assignments[cellId];
+  const cell=document.querySelector(`[data-cell-id="${cellId}"]`);
+  if(cell) renderCell(cell,cellId);
+  updateWorkerStates();
+}
+
+function updateWorkerStates(){
+  const assigned=new Set(Object.values(assignments).flat());
+  WORKERS.forEach(w=>{
+    const el=document.getElementById('w_'+w.name.replace(/\W/g,'_'));
+    if(!el) return;
+    if(assigned.has(w.name)){el.classList.add('assigned');el.draggable=false;}
+    else{el.classList.remove('assigned');el.draggable=true;}
+  });
+}
+
+function onDragOver(e){
+  e.preventDefault();
+  const cell=e.currentTarget;const cellId=cell.dataset.cellId;
+  const occupied=(assignments[cellId]||[]).length>0;
+  const fromCell=dragState?dragState.fromCell:null;
+  if(occupied&&fromCell!==cellId){cell.classList.remove('drag-over');cell.classList.add('drag-over-swap');}
+  else{cell.classList.remove('drag-over-swap');cell.classList.add('drag-over');}
+  e.dataTransfer.dropEffect='move';
+}
+function onDragLeave(e){e.currentTarget.classList.remove('drag-over','drag-over-swap');}
+function onDrop(e){
+  e.preventDefault();
+  const cell=e.currentTarget;cell.classList.remove('drag-over','drag-over-swap');
+  if(!dragState) return;
+  const {name:workerName,fromCell}=dragState;dragState=null;
+  const toCell=cell.dataset.cellId;
+  if(fromCell===toCell) return;
+  const toWorkers=assignments[toCell]||[];
+  if(fromCell===null){
+    const assigned=new Set(Object.values(assignments).flat());
+    if(assigned.has(workerName)) return;
+    if(toWorkers.length>0){assignments[toCell]=[];const old=document.querySelector(`[data-cell-id="${toCell}"]`);if(old)renderCell(old,toCell);}
+    if(!assignments[toCell]) assignments[toCell]=[];
+    assignments[toCell].push(workerName);
+  } else {
+    if(toWorkers.length>0){
+      const toWorker=toWorkers[0];
+      assignments[toCell]=[workerName];assignments[fromCell]=[toWorker];
+      const fc=document.querySelector(`[data-cell-id="${fromCell}"]`);if(fc)renderCell(fc,fromCell);
+    } else {
+      assignments[fromCell]=(assignments[fromCell]||[]).filter(n=>n!==workerName);
+      if(!assignments[fromCell].length) delete assignments[fromCell];
+      if(!assignments[toCell]) assignments[toCell]=[];
+      assignments[toCell].push(workerName);
+      const fc=document.querySelector(`[data-cell-id="${fromCell}"]`);if(fc)renderCell(fc,fromCell);
+    }
+  }
+  renderCell(cell,toCell);updateWorkerStates();
+}
+
+function toggleCalendar(){document.getElementById('calendar-popup').classList.toggle('show');}
+function changeMonth(d){calMonth+=d;if(calMonth>11){calMonth=0;calYear++;}if(calMonth<0){calMonth=11;calYear--;}renderCalendar();}
+function renderCalendar(){
+  const months=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  document.getElementById('cal-title').textContent=months[calMonth]+' '+calYear;
+  document.getElementById('cal-day-names').innerHTML=['L','M','X','J','V','S','D'].map(d=>`<div class="cal-day-name">${d}</div>`).join('');
+  const dc=document.getElementById('cal-days');dc.innerHTML='';
+  const first=new Date(calYear,calMonth,1).getDay();
+  const offset=first===0?6:first-1;
+  const total=new Date(calYear,calMonth+1,0).getDate();
+  const today=new Date();
+  for(let i=0;i<offset;i++){const d=document.createElement('div');d.className='cal-day empty';dc.appendChild(d);}
+  for(let d=1;d<=total;d++){
+    const div=document.createElement('div');div.className='cal-day';div.textContent=d;
+    if(d===today.getDate()&&calMonth===today.getMonth()&&calYear===today.getFullYear()) div.classList.add('today');
+    if(selectedDate&&d===selectedDate.d&&calMonth===selectedDate.m&&calYear===selectedDate.y) div.classList.add('selected');
+    div.onclick=()=>selectDate(d);dc.appendChild(div);
+  }
+}
+function selectDate(d){
+  selectedDate={d,m:calMonth,y:calYear};
+  const months=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  const days=['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO'];
+  const date=new Date(calYear,calMonth,d);
+  const str=days[date.getDay()]+' '+d+' - '+months[calMonth]+' - '+calYear;
+  document.getElementById('date-label').textContent=str;
+  document.getElementById('xl-fecha').textContent=str;
+  document.getElementById('calendar-popup').classList.remove('show');
+  renderCalendar();
+}
+
+function saveData(){
+  try{localStorage.setItem('planilla_a',JSON.stringify(assignments));localStorage.setItem('planilla_d',JSON.stringify(selectedDate));localStorage.setItem('planilla_w',JSON.stringify(WORKERS));}catch(e){}
+  const msg=document.getElementById('save-msg');msg.style.display='block';
+  setTimeout(()=>msg.style.display='none',2200);
+}
+function loadData(){
+  try{
+    const a=localStorage.getItem('planilla_a'),dt=localStorage.getItem('planilla_d'),wk=localStorage.getItem('planilla_w');
+    if(a) assignments=JSON.parse(a);
+    if(wk) WORKERS=JSON.parse(wk);
+    if(dt){
+      selectedDate=JSON.parse(dt);
+      if(selectedDate){
+        const months=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+        const days=['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO'];
+        const date=new Date(selectedDate.y,selectedDate.m,selectedDate.d);
+        const str=days[date.getDay()]+' '+selectedDate.d+' - '+months[selectedDate.m]+' - '+selectedDate.y;
+        document.getElementById('date-label').textContent=str;
+        document.getElementById('xl-fecha').textContent=str;
+        calYear=selectedDate.y;calMonth=selectedDate.m;
+      }
+    }
+  }catch(e){}
+}
+
+function downloadExcel(){
+  const wb=XLSX.utils.book_new();
+  const dateStr=document.getElementById('date-label').textContent||'SIN FECHA';
+
+  // Colores corporativos según instrucciones
+  const C={
+    headerBg:'1F4E79', headerFc:'FFFFFF',
+    thBg:'D9E2F3',    thFc:'1F4E79',
+    secBg:'1F4E79',   secFc:'FFFFFF',
+    white:'FFFFFF',   gray:'F7F7F7',
+    vacBg:'E8F1FA',   bajBg:'F8D7DA',
+    desBg:'D4EDDA',   falBg:'FFE5CC',
+    border:'CCCCCC',  darkTxt:'1F4E79'
+  };
+
+  const bt={style:'thin',color:{rgb:C.border}};
+  const ab={top:bt,bottom:bt,left:bt,right:bt};
+
+  function cs(o={}){
+    return{
+      font:{name:'Calibri',sz:o.sz||11,bold:!!o.bold,color:{rgb:o.fc||'1F4E79'}},
+      fill:{fgColor:{rgb:o.bg||C.white}},
+      alignment:{horizontal:o.al||'left',vertical:'center',wrapText:false},
+      border:ab
+    };
+  }
+
+  // Secciones finales con color especial
+  const specialBg={vacaciones:C.vacBg, baja:C.bajBg, descansos:C.desBg, faltas:C.falBg};
+
+  // Cabecera (filas 0-3)
+  const headerRows=[
+    ['LISTADO DE PERSONAL - LLANES','',''],
+    ['SERVICIO LIMPIEZA VIARIA DIURNO LLANES','',''],
+    [dateStr,'',''],
+    ['ENCARGADO: RAFAEL GARCIA GIRALDO','',''],
+    ['','',''], // separador
+    ['#','PUESTO / VEHÍCULO','TRABAJADOR ASIGNADO']
+  ];
+
+  // Filas de datos
+  const secRows=[];
+  SECTIONS.forEach(sec=>{
+    const titulo=sec.title+(sec.horario?' — '+sec.horario:'');
+    secRows.push({type:'section',sid:sec.id,data:[titulo,'','']});
+    sec.puestos.forEach((puesto,i)=>{
+      const isFixed=sec.fixed&&sec.fixed[i];
+      if(isFixed){secRows.push({type:'data',sid:sec.id,data:['',puesto,'(Fija)']});return;}
+      const cellId=sec.id+'_'+i;
+      const names=(assignments[cellId]||[]).join(', ')||'';
+      secRows.push({type:'data',sid:sec.id,data:[names?'1':'',puesto,names]});
+    });
+  });
+
+  const allRows=[...headerRows,...secRows.map(r=>r.data)];
+  const ws=XLSX.utils.aoa_to_sheet(allRows);
+
+  // Merges cabecera
+  ws['!merges']=[
+    {s:{r:0,c:0},e:{r:0,c:2}},{s:{r:1,c:0},e:{r:1,c:2}},
+    {s:{r:2,c:0},e:{r:2,c:2}},{s:{r:3,c:0},e:{r:3,c:2}},{s:{r:4,c:0},e:{r:4,c:2}}
+  ];
+  // Merges secciones
+  secRows.forEach((row,i)=>{
+    if(row.type==='section') ws['!merges'].push({s:{r:6+i,c:0},e:{r:6+i,c:2}});
+  });
+
+  // Anchos columnas y alto filas
+  ws['!cols']=[{wch:4},{wch:44},{wch:40}];
+  ws['!rows']=[];
+  for(let i=0;i<allRows.length;i++) ws['!rows'].push({hpt:i===0?30:i<4?18:16});
+
+  // Estilos cabecera filas 0-3
+  const hdrStyles=[
+    cs({bg:C.headerBg,fc:C.headerFc,bold:true,al:'center',sz:16}),
+    cs({bg:C.headerBg,fc:C.headerFc,bold:true,al:'center',sz:13}),
+    cs({bg:C.headerBg,fc:C.headerFc,bold:true,al:'center',sz:12}),
+    cs({bg:C.headerBg,fc:C.headerFc,bold:true,al:'center',sz:11})
+  ];
+  for(let r=0;r<4;r++){
+    for(let c=0;c<3;c++){
+      const ref=XLSX.utils.encode_cell({r,c});
+      if(!ws[ref]) ws[ref]={v:c===0?allRows[r][0]:'',t:'s'};
+      ws[ref].s=hdrStyles[r];
+    }
+  }
+  // Fila separadora 4
+  for(let c=0;c<3;c++){const ref=XLSX.utils.encode_cell({r:4,c});if(!ws[ref])ws[ref]={v:'',t:'s'};ws[ref].s=cs({bg:C.headerBg});}
+
+  // Fila encabezados tabla (fila 5)
+  const colH=['#','PUESTO / VEHÍCULO','TRABAJADOR ASIGNADO'];
+  for(let c=0;c<3;c++){
+    const ref=XLSX.utils.encode_cell({r:5,c});
+    if(!ws[ref])ws[ref]={v:colH[c],t:'s'};
+    ws[ref].s=cs({bg:C.thBg,fc:C.thFc,bold:true,al:'center',sz:11});
+  }
+
+  // Filas de datos
+  let di=0;
+  secRows.forEach((row,i)=>{
+    const ri=6+i;
+    if(row.type==='section'){
+      // Secciones finales con color especial, resto azul oscuro
+      const sbg=specialBg[row.sid]||C.secBg;
+      const sfc=specialBg[row.sid]?C.darkTxt:C.secFc;
+      for(let c=0;c<3;c++){
+        const ref=XLSX.utils.encode_cell({r:ri,c});
+        if(!ws[ref])ws[ref]={v:c===0?row.data[0]:'',t:'s'};
+        ws[ref].s=cs({bg:sbg,fc:sfc,bold:true,sz:11});
+      }
+    } else {
+      const sbg=specialBg[row.sid];
+      const bg=sbg||( di%2===0?C.white:C.gray );
+      const hasW=!!row.data[2]&&row.data[2]!=='(Fija)';
+      for(let c=0;c<3;c++){
+        const ref=XLSX.utils.encode_cell({r:ri,c});
+        if(!ws[ref])ws[ref]={v:row.data[c]||'',t:'s'};
+        ws[ref].s=cs({bg,fc:C.darkTxt,bold:(c===0||c===2)&&hasW,al:c===0?'center':'left',sz:11});
+      }
+      di++;
+    }
+  });
+
+  // Configuración de página A4 vertical
+  ws['!pageSetup']={paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0};
+  ws['!margins']={left:0.79,right:0.79,top:0.79,bottom:0.79,header:0.3,footer:0.3};
+
+  XLSX.utils.book_append_sheet(wb,ws,'Planilla');
+  XLSX.writeFile(wb,'Planilla_Llanes_'+dateStr.replace(/[\s/:\-]/g,'_')+'.xlsx');
+}
+
+function openAddModal(){
+  modalMode='add';document.getElementById('modal-title').textContent='Agregar personal';
+  document.getElementById('modal-content').innerHTML=`<label style="font-size:11px;color:#555;display:block;margin-bottom:4px">Nombre completo</label><input id="new-name" type="text" placeholder="Nombre del trabajador"/><label style="font-size:11px;color:#555;display:block;margin-bottom:4px">Categoría</label><select id="new-cat"><option value="amarillo">Peón (Amarillo)</option><option value="naranja">Conductor (Naranja)</option><option value="verde">Zona Verde (Verde)</option><option value="azul">General (Azul)</option><option value="marron">Brigada Rural (Marrón)</option></select>`;
+  document.getElementById('modal-overlay').classList.add('show');
+}
+function openDelModal(){
+  modalMode='del';document.getElementById('modal-title').textContent='Eliminar personal';
+  const opts=WORKERS.map(w=>`<option value="${w.name}">${w.name}</option>`).join('');
+  document.getElementById('modal-content').innerHTML=`<label style="font-size:11px;color:#555;display:block;margin-bottom:4px">Seleccionar trabajador</label><select id="del-name">${opts}</select>`;
+  document.getElementById('modal-overlay').classList.add('show');
+}
+function closeModal(){document.getElementById('modal-overlay').classList.remove('show');}
+function modalConfirm(){
+  if(modalMode==='add'){
+    const name=document.getElementById('new-name').value.trim().toUpperCase();
+    const cat=document.getElementById('new-cat').value;
+    if(!name) return;
+    if(WORKERS.find(w=>w.name===name)){alert('Ese trabajador ya existe');return;}
+    WORKERS.push({name,cat});
+  } else if(modalMode==='del'){
+    const name=document.getElementById('del-name').value;
+    WORKERS=WORKERS.filter(w=>w.name!==name);
+    Object.keys(assignments).forEach(k=>{assignments[k]=assignments[k].filter(n=>n!==name);if(!assignments[k].length)delete assignments[k];});
+  }
+  closeModal();renderWorkers();renderSheet();
+}
+init();
+</script>
+</body>
+</html>
