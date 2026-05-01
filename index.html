@@ -535,8 +535,16 @@ function downloadExcel(){
   ws['!pageSetup']={paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0};
   ws['!margins']={left:0.79,right:0.79,top:0.79,bottom:0.79,header:0.3,footer:0.3};
 
-  XLSX.utils.book_append_sheet(wb,ws,'Planilla');
-  XLSX.writeFile(wb,'Planilla_Llanes_'+dateStr.replace(/[\s/:\-]/g,'_')+'.xlsx');
+  // Formato fecha DD-MM-YYYY para nombre de archivo y pestaña
+  let fileDate='SIN_FECHA';
+  if(selectedDate){
+    const dd=String(selectedDate.d).padStart(2,'0');
+    const mm=String(selectedDate.m+1).padStart(2,'0');
+    const yyyy=selectedDate.y;
+    fileDate=`${dd}-${mm}-${yyyy}`;
+  }
+  XLSX.utils.book_append_sheet(wb,ws,fileDate);
+  XLSX.writeFile(wb,fileDate+'.xlsx');
 }
 
 function openAddModal(){
